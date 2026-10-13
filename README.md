@@ -56,6 +56,7 @@ Set `APP_DATA_DIR` to a writable persistent directory to keep the SQLite databas
 
 - Student and admin login are separate. Student signup always creates a student account; additional admin signup requires the secret `ADMIN_SIGNUP_INVITE`. Configure the first administrator with `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`; if that email already belongs to an account, the configured password must verify before the account is promoted.
 - Signup checks that the applicant is at least 23 based on the date of birth entered. The date is used for the check and is not saved in the account database. This is a self-reported DOB check, not Aadhaar verification. Do not collect Aadhaar numbers here; actual Aadhaar verification requires an authorized UIDAI verification provider and separate privacy/legal review.
+- Admin signup accepts a card photo for local OCR text matching against the entered name and DOB. The image is uploaded to this app server for in-memory processing only; it is not written to disk or the database, and OCR is not sent to a third-party service. Extracted text is not displayed, logged, or stored. OCR may be wrong and cannot establish that a document is genuine, belongs to the applicant, or is Aadhaar-authenticated. This is a text consistency check, not identity verification.
 - Profiles can store roll number, department, year of study, and optional phone number. Roll numbers remain strings (including leading zeroes), are never returned by student-facing database queries, and are only searchable by a recently reauthenticated administrator. No roll-number format or uniqueness rule is assumed unless configured below.
 - Private registered-item records are visible only to the owner or a recently reauthenticated admin. QR links contain only a random opaque token; the database stores a SHA-256 token hash. Public scans disclose no owner data. A QR is not proof of ownership.
 - Claims and their ownership evidence are private to the claimant and admins. Only a reauthenticated admin can approve/reject claims or complete a handover. SQLite uniqueness constraints and an immediate transaction prevent a second handover for the same Found report.
@@ -71,6 +72,7 @@ Set `APP_DATA_DIR` to a writable persistent directory to keep the SQLite databas
 | `BOOTSTRAP_ADMIN_EMAIL` | unset | Email for first admin provisioning |
 | `BOOTSTRAP_ADMIN_PASSWORD` | unset | Existing-account verification or initial admin password; store as a secret |
 | `ADMIN_SIGNUP_INVITE` | unset | Secret invitation code to permit additional admin account signup |
+| `TESSERACT_CMD` | `tesseract` | Local Tesseract OCR executable path, if not on PATH |
 | `ROLL_NUMBER_REGEX` | unset | Optional Python regular expression for the college's exact roll-number format |
 | `ROLL_NUMBER_UNIQUE` | `false` | Set to `true` only if college rules require uniqueness; migration fails safely on existing duplicates |
 | `APP_BASE_URL` | unset | Trusted HTTPS app URL used in QR links (HTTP localhost allowed for development) |
@@ -108,6 +110,7 @@ py -3.12 -m unittest discover -s tests -v
 ```
 
 Tests use temporary SQLite databases and do not reset or write to the app database.
+For local admin signup OCR, install Tesseract OCR and ensure `tesseract.exe` is on `PATH`, or set `TESSERACT_CMD` to its full path. The Docker image installs the English Tesseract engine automatically.
 
 ## Deployment limitations and operational security
 

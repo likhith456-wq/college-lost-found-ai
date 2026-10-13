@@ -462,12 +462,17 @@ def create_student(db_path, name, email, password_hash):
     return find_user_by_email(db_path, email)
 
 
-def create_invited_admin(db_path, name, email, password_hash, invitation, configured_invitation):
+def is_valid_admin_invitation(invitation, configured_invitation):
     import hmac
 
-    if not configured_invitation or not invitation or not hmac.compare_digest(
-        invitation, configured_invitation
-    ):
+    return bool(configured_invitation and invitation) and hmac.compare_digest(
+        invitation,
+        configured_invitation,
+    )
+
+
+def create_invited_admin(db_path, name, email, password_hash, invitation, configured_invitation):
+    if not is_valid_admin_invitation(invitation, configured_invitation):
         raise AuthorizationError("A valid administrator invitation is required.")
     with connection(db_path, begin_immediate=True) as conn:
         conn.execute(

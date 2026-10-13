@@ -12,6 +12,7 @@ from transformers import pipeline
 
 import database as db
 from catalog import CATEGORIES, ITEMS, identify_from_text
+from identity_ocr import IdentityOCRUnavailable, check_identity_document
 from matching import rank_lost_found_matches
 from security import (
     AuthorizationError,
@@ -329,6 +330,19 @@ def render_login_page():
                 key="admin_signup_dob",
             )
             invitation = st.text_input("Administrator invitation code", type="password")
+            document_photo = st.file_uploader(
+                "Aadhaar photo for local name and DOB text matching",
+                type=["jpg", "jpeg", "png", "webp"],
+                help=(
+                    "The photo is processed by local OCR in memory. It is not saved "
+                    "to disk or sent to an external OCR service."
+                ),
+                key="admin_signup_aadhaar_photo",
+            )
+            st.caption(
+                "OCR only checks whether printed text matches your entries. It cannot "
+                "authenticate Aadhaar or prove the document is genuine."
+            )
             password = st.text_input("Password", type="password")
             confirmation = st.text_input("Confirm password", type="password")
             submitted = st.form_submit_button(
@@ -336,36 +350,67 @@ def render_login_page():
                 disabled=not invitation_configured,
             )
         if submitted:
-            if not name.strip() or not email.strip() or not password or not date_of_birth:
+            if (
+                not name.strip()
+                or not email.strip()
+                or not password
+                or not date_of_birth
+                or not document_photo
+            ):
                 st.warning("Complete all required fields.")
             elif not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email.strip()):
                 st.warning("Enter a valid email address.")
-            elif not meets_minimum_age(date_of_birth, 23):
-                st.error("You must be at least 23 years old to create an account.")
             elif len(password) < 12:
                 st.warning("Use a password with at least 12 characters.")
             elif password != confirmation:
                 st.warning("Passwords do not match.")
+            elif not db.is_valid_admin_invitation(
+                invitation,
+                os.getenv("ADMIN_SIGNUP_INVITE", ""),
+            ):
+                st.error("A valid administrator invitation is required.")
             else:
                 try:
-                    user = db.create_invited_admin(
-                        DB_PATH,
+                    identity_check = check_identity_document(
+                        document_photo.getvalue(),
                         name,
-                        email,
-                        hash_password(password),
-                        invitation,
-                        os.getenv("ADMIN_SIGNUP_INVITE", ""),
+                        date_of_birth,
+                        command=os.getenv("TESSERACT_CMD", "tesseract"),
                     )
-                except db.AuthorizationError as error:
+                except (IdentityOCRUnavailable, ValueError) as error:
                     st.error(str(error))
-                except (ValueError, db.sqlite3.IntegrityError):
-                    st.error("An account with that email may already exist.")
                 else:
-                    st.session_state["user"] = _safe_user(user)
-                    st.session_state["last_activity"] = time.time()
-                    st.success("Administrator account created.")
-                    st.rerun()
-            st.session_state.pop("admin_signup_dob", None)
+                    if not identity_check["name_matches"]:
+                        st.error(
+                            "Local OCR could not match the entered name to the document."
+                        )
+                    elif not identity_check["date_of_birth_matches"]:
+                        st.error(
+                            "Local OCR could not match the entered date of birth to the document."
+                        )
+                    elif not identity_check["meets_minimum_age"]:
+                        st.error(
+                            "The document date of birth does not meet the minimum age of 23."
+                        )
+                    else:
+                        try:
+                            user = db.create_invited_admin(
+                                DB_PATH,
+                                name,
+                                email,
+                                hash_password(password),
+                                invitation,
+                                os.getenv("ADMIN_SIGNUP_INVITE", ""),
+                            )
+                        except db.AuthorizationError as error:
+                            st.error(str(error))
+                        except (ValueError, db.sqlite3.IntegrityError):
+                            st.error("An account with that email may already exist.")
+                        else:
+                            st.session_state["user"] = _safe_user(user)
+                            st.session_state["last_activity"] = time.time()
+                            st.success("Administrator account created.")
+                            st.rerun()
 
 
 def render_profile_page(user):
