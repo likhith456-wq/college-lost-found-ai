@@ -6,3 +6,5 @@ item_photos/
 .env
 .venv/
 venv/
+backups/
+tests/
