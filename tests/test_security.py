@@ -1,11 +1,13 @@
 import os
 import unittest
+from datetime import date
 from unittest.mock import patch
 
 from security import (
     create_qr_token,
     hash_password,
     hash_qr_token,
+    meets_minimum_age,
     validate_roll_number,
     verify_password,
 )
@@ -41,6 +43,13 @@ class SecurityTests(unittest.TestCase):
         self.assertGreaterEqual(len(token), 40)
         self.assertNotEqual(token, hash_qr_token(token))
         self.assertNotEqual(hash_qr_token(token), hash_qr_token(create_qr_token()))
+
+    def test_age_check_enforces_exact_birthday_and_rejects_future_dates(self):
+        today = date(2026, 10, 13)
+        self.assertTrue(meets_minimum_age(date(2003, 10, 13), 23, today=today))
+        self.assertFalse(meets_minimum_age(date(2003, 10, 14), 23, today=today))
+        self.assertFalse(meets_minimum_age(date(2027, 1, 1), 23, today=today))
+        self.assertFalse(meets_minimum_age("2000-01-01", 23, today=today))
 
 
 if __name__ == "__main__":

@@ -462,6 +462,24 @@ def create_student(db_path, name, email, password_hash):
     return find_user_by_email(db_path, email)
 
 
+def create_invited_admin(db_path, name, email, password_hash, invitation, configured_invitation):
+    import hmac
+
+    if not configured_invitation or not invitation or not hmac.compare_digest(
+        invitation, configured_invitation
+    ):
+        raise AuthorizationError("A valid administrator invitation is required.")
+    with connection(db_path, begin_immediate=True) as conn:
+        conn.execute(
+            """
+            INSERT INTO users(name, email, password_hash, role, created_at)
+            VALUES (?, ?, ?, 'admin', ?)
+            """,
+            (name.strip(), email.strip().lower(), password_hash, utc_now()),
+        )
+    return find_user_by_email(db_path, email)
+
+
 def bootstrap_admin(db_path, email, password):
     if not email or not password:
         raise ValueError("Both bootstrap admin email and password are required.")

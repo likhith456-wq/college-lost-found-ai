@@ -231,6 +231,47 @@ class DatabaseTests(unittest.TestCase):
     def test_signup_is_always_student(self):
         self.assertEqual(self.other["role"], "student")
 
+    def test_admin_signup_requires_invitation_and_never_promotes_existing_student(self):
+        with self.assertRaises(AuthorizationError):
+            database.create_invited_admin(
+                self.db_path,
+                "New Admin",
+                "new-admin@example.edu",
+                hash_password("new-admin-password-123"),
+                "wrong-invite",
+                "expected-invite",
+            )
+        with self.assertRaises(AuthorizationError):
+            database.create_invited_admin(
+                self.db_path,
+                "New Admin",
+                "new-admin@example.edu",
+                hash_password("new-admin-password-123"),
+                "expected-invite",
+                "",
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            database.create_invited_admin(
+                self.db_path,
+                "Other Student",
+                "other@example.edu",
+                hash_password("different-password-123"),
+                "expected-invite",
+                "expected-invite",
+            )
+        self.assertEqual(database.find_user_by_email(
+            self.db_path, "other@example.edu"
+        )["role"], "student")
+        admin = database.create_invited_admin(
+            self.db_path,
+            "New Admin",
+            "new-admin@example.edu",
+            hash_password("new-admin-password-123"),
+            "expected-invite",
+            "expected-invite",
+        )
+        self.assertEqual(admin["role"], "admin")
+
     def test_qr_tokens_are_private_and_revocable(self):
         token = create_qr_token()
         item_id = database.create_registered_item(

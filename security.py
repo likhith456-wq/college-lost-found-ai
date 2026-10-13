@@ -3,6 +3,7 @@ import hmac
 import os
 import re
 import secrets
+from datetime import date
 
 
 class AuthorizationError(PermissionError):
@@ -35,6 +36,16 @@ def verify_password(password, stored_hash):
 
     legacy_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
     return hmac.compare_digest(legacy_hash, stored_hash), True
+
+
+def meets_minimum_age(date_of_birth, minimum_age, *, today=None):
+    today = today or date.today()
+    if not isinstance(date_of_birth, date) or date_of_birth > today or minimum_age < 0:
+        return False
+    age = today.year - date_of_birth.year
+    if (today.month, today.day) < (date_of_birth.month, date_of_birth.day):
+        age -= 1
+    return age >= minimum_age
 
 
 def validate_roll_number(value):

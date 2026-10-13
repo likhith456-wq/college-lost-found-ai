@@ -1,7 +1,7 @@
 import os
 import re
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -18,6 +18,7 @@ from security import (
     create_qr_token,
     hash_password,
     hash_qr_token,
+    meets_minimum_age,
 )
 from uploads import build_qr_payload, make_qr_png, save_uploaded_image
 
@@ -235,35 +236,61 @@ def render_public_qr_page(token):
 
 def render_login_page():
     st.title("🔐 Symbiote Lofo AI")
-    st.caption("Sign in to manage reports, private item records, and campus claims.")
-    login_tab, signup_tab = st.tabs(["Login", "Create student account"])
-    with login_tab:
-        with st.form("login_form"):
+    st.caption("Student and administrator access. Date of birth is checked for age and not saved to your account.")
+    student_login_tab, admin_login_tab, student_signup_tab, admin_signup_tab = st.tabs(
+        ["Student login", "Admin login", "Student signup", "Admin signup"]
+    )
+    with student_login_tab:
+        with st.form("student_login_form"):
             email = st.text_input("College email")
             password = st.text_input("Password", type="password")
-            submitted = st.form_submit_button("Login")
+            submitted = st.form_submit_button("Student login")
         if submitted:
             if not email.strip() or not password:
                 st.warning("Enter your email and password.")
             else:
                 user = db.authenticate_user(DB_PATH, email, password)
-                if user:
+                if user and user["role"] == "student":
                     st.session_state["user"] = _safe_user(user)
                     st.session_state["last_activity"] = time.time()
                     st.rerun()
-                st.error("Invalid email or password.")
-    with signup_tab:
-        with st.form("signup_form"):
+                st.error("Invalid student credentials.")
+    with admin_login_tab:
+        with st.form("admin_login_form"):
+            email = st.text_input("Administrator email")
+            password = st.text_input("Administrator password", type="password")
+            submitted = st.form_submit_button("Admin login")
+        if submitted:
+            if not email.strip() or not password:
+                st.warning("Enter your administrator email and password.")
+            else:
+                user = db.authenticate_user(DB_PATH, email, password)
+                if user and user["role"] == "admin":
+                    st.session_state["user"] = _safe_user(user)
+                    st.session_state["last_activity"] = time.time()
+                    st.rerun()
+                st.error("Invalid administrator credentials.")
+    with student_signup_tab:
+        with st.form("student_signup_form"):
             name = st.text_input("Full name", max_chars=120)
             email = st.text_input("College email", max_chars=254)
+            date_of_birth = st.date_input(
+                "Date of birth (used only for age verification; not saved)",
+                value=None,
+                min_value=date(1900, 1, 1),
+                max_value=date.today(),
+                key="student_signup_dob",
+            )
             password = st.text_input("Password", type="password")
             confirmation = st.text_input("Confirm password", type="password")
-            submitted = st.form_submit_button("Create account")
+            submitted = st.form_submit_button("Create student account")
         if submitted:
-            if not name.strip() or not email.strip() or not password:
+            if not name.strip() or not email.strip() or not password or not date_of_birth:
                 st.warning("Complete all required fields.")
             elif not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email.strip()):
                 st.warning("Enter a valid email address.")
+            elif not meets_minimum_age(date_of_birth, 23):
+                st.error("You must be at least 23 years old to create an account.")
             elif len(password) < 12:
                 st.warning("Use a password with at least 12 characters.")
             elif password != confirmation:
@@ -286,6 +313,59 @@ def render_login_page():
                     st.session_state["last_activity"] = time.time()
                     st.success("Student account created.")
                     st.rerun()
+    with admin_signup_tab:
+        st.caption("Admin signup requires an invitation code from an existing administrator.")
+        invitation_configured = bool(os.getenv("ADMIN_SIGNUP_INVITE"))
+        if not invitation_configured:
+            st.warning("Administrator signup is disabled until ADMIN_SIGNUP_INVITE is configured.")
+        with st.form("admin_signup_form"):
+            name = st.text_input("Administrator name", max_chars=120)
+            email = st.text_input("Administrator email", max_chars=254)
+            date_of_birth = st.date_input(
+                "Date of birth (used only for age verification; not saved)",
+                value=None,
+                min_value=date(1900, 1, 1),
+                max_value=date.today(),
+                key="admin_signup_dob",
+            )
+            invitation = st.text_input("Administrator invitation code", type="password")
+            password = st.text_input("Password", type="password")
+            confirmation = st.text_input("Confirm password", type="password")
+            submitted = st.form_submit_button(
+                "Create administrator account",
+                disabled=not invitation_configured,
+            )
+        if submitted:
+            if not name.strip() or not email.strip() or not password or not date_of_birth:
+                st.warning("Complete all required fields.")
+            elif not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email.strip()):
+                st.warning("Enter a valid email address.")
+            elif not meets_minimum_age(date_of_birth, 23):
+                st.error("You must be at least 23 years old to create an account.")
+            elif len(password) < 12:
+                st.warning("Use a password with at least 12 characters.")
+            elif password != confirmation:
+                st.warning("Passwords do not match.")
+            else:
+                try:
+                    user = db.create_invited_admin(
+                        DB_PATH,
+                        name,
+                        email,
+                        hash_password(password),
+                        invitation,
+                        os.getenv("ADMIN_SIGNUP_INVITE", ""),
+                    )
+                except db.AuthorizationError as error:
+                    st.error(str(error))
+                except (ValueError, db.sqlite3.IntegrityError):
+                    st.error("An account with that email may already exist.")
+                else:
+                    st.session_state["user"] = _safe_user(user)
+                    st.session_state["last_activity"] = time.time()
+                    st.success("Administrator account created.")
+                    st.rerun()
+            st.session_state.pop("admin_signup_dob", None)
 
 
 def render_profile_page(user):

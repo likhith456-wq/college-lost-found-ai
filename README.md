@@ -26,6 +26,7 @@ Open the local URL printed by Streamlit. The first image identification download
    | --- | --- | --- |
    | `BOOTSTRAP_ADMIN_EMAIL` | Yes | Email address for the initial administrator |
    | `BOOTSTRAP_ADMIN_PASSWORD` | Yes | Password for the initial administrator, used when creating that account |
+   | `ADMIN_SIGNUP_INVITE` | No | Secret invitation code required for additional admin signup; store as a secret |
    | `ADMIN_EMAILS` | No | Comma-separated recipients for new-report notifications |
    | `SMTP_HOST` | No | SMTP server host; leave unset to disable email |
    | `SMTP_PORT` | No | SMTP port; defaults to `587` |
@@ -38,7 +39,7 @@ Open the local URL printed by Streamlit. The first image identification download
 
    Set secrets through Render's environment settings, not in source control. The `PORT` variable is supplied by Render and is used by the Docker command.
 
-5. Deploy. On the first startup the administrator account is created from the bootstrap variables. If the account already exists, its current password must match `BOOTSTRAP_ADMIN_PASSWORD` before it can be promoted. Register student accounts using the sign-up page. Set `APP_BASE_URL` to the deployed HTTPS URL to enable QR creation.
+5. Deploy. On the first startup the administrator account is created from the bootstrap variables. If the account already exists, its current password must match `BOOTSTRAP_ADMIN_PASSWORD` before it can be promoted. Set `ADMIN_SIGNUP_INVITE` only if you want to allow invitation-based creation of additional administrators. Set `APP_BASE_URL` to the deployed HTTPS URL to enable QR creation.
 6. Open the public URL shown on the Render service page and test sign-in, a report submission, the **My Reports** page, and the **Mark my report as done** action. Users can complete their own reports; admins can complete any report. Completion is visible and can be filtered in Saved Reports.
 
 For persistent SQLite storage, run only one service instance. This app is not configured for multiple replicas or concurrent shared-disk database access. Keep the admin password and SMTP credentials private, and rotate them in the provider if they are exposed.
@@ -53,7 +54,8 @@ Set `APP_DATA_DIR` to a writable persistent directory to keep the SQLite databas
 
 ## Features and privacy
 
-- Signup always creates a student account. Configure the first administrator with `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`; if that email already belongs to an account, the configured password must verify before the account is promoted.
+- Student and admin login are separate. Student signup always creates a student account; additional admin signup requires the secret `ADMIN_SIGNUP_INVITE`. Configure the first administrator with `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`; if that email already belongs to an account, the configured password must verify before the account is promoted.
+- Signup checks that the applicant is at least 23 based on the date of birth entered. The date is used for the check and is not saved in the account database. This is a self-reported DOB check, not Aadhaar verification. Do not collect Aadhaar numbers here; actual Aadhaar verification requires an authorized UIDAI verification provider and separate privacy/legal review.
 - Profiles can store roll number, department, year of study, and optional phone number. Roll numbers remain strings (including leading zeroes), are never returned by student-facing database queries, and are only searchable by a recently reauthenticated administrator. No roll-number format or uniqueness rule is assumed unless configured below.
 - Private registered-item records are visible only to the owner or a recently reauthenticated admin. QR links contain only a random opaque token; the database stores a SHA-256 token hash. Public scans disclose no owner data. A QR is not proof of ownership.
 - Claims and their ownership evidence are private to the claimant and admins. Only a reauthenticated admin can approve/reject claims or complete a handover. SQLite uniqueness constraints and an immediate transaction prevent a second handover for the same Found report.
@@ -68,6 +70,7 @@ Set `APP_DATA_DIR` to a writable persistent directory to keep the SQLite databas
 | `APP_DATA_DIR` | App folder locally; `/var/data` in Docker | Writable directory for database, backups, photos, and data |
 | `BOOTSTRAP_ADMIN_EMAIL` | unset | Email for first admin provisioning |
 | `BOOTSTRAP_ADMIN_PASSWORD` | unset | Existing-account verification or initial admin password; store as a secret |
+| `ADMIN_SIGNUP_INVITE` | unset | Secret invitation code to permit additional admin account signup |
 | `ROLL_NUMBER_REGEX` | unset | Optional Python regular expression for the college's exact roll-number format |
 | `ROLL_NUMBER_UNIQUE` | `false` | Set to `true` only if college rules require uniqueness; migration fails safely on existing duplicates |
 | `APP_BASE_URL` | unset | Trusted HTTPS app URL used in QR links (HTTP localhost allowed for development) |
