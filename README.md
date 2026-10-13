@@ -1,4 +1,4 @@
-# College Lost & Found AI
+# Symbiote Lofo AI
 
 A Streamlit app for college lost-and-found reports with CLIP image suggestions, SQLite storage, account sign-in, an admin dashboard, report completion controls, and optional email notifications. The interface uses a crimson-red and green color theme.
 

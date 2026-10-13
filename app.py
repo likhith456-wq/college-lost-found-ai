@@ -32,7 +32,7 @@ SESSION_IDLE_SECONDS = max(300, int(os.getenv("SESSION_IDLE_SECONDS", "1800")))
 ALLOWED_STATUS = list(db.WORKFLOW_STATUSES)
 
 st.set_page_config(
-    page_title="College Lost & Found AI",
+    page_title="Symbiote Lofo AI",
     page_icon="🔎",
     layout="wide",
 )
@@ -204,7 +204,7 @@ def require_admin_reauthentication(user):
 
 
 def render_public_qr_page(token):
-    st.title("🔎 College Lost & Found")
+    st.title("🔎 Symbiote Lofo AI")
     if not db.lookup_public_qr(DB_PATH, token):
         st.error("This QR code is invalid, inactive, or has been revoked.")
         st.caption("No owner information is available from a QR scan.")
@@ -234,7 +234,7 @@ def render_public_qr_page(token):
 
 
 def render_login_page():
-    st.title("🔐 College Lost & Found AI")
+    st.title("🔐 Symbiote Lofo AI")
     st.caption("Sign in to manage reports, private item records, and campus claims.")
     login_tab, signup_tab = st.tabs(["Login", "Create student account"])
     with login_tab:
@@ -534,7 +534,7 @@ def send_report_notifications(report_id, item_name, user):
         for address in os.getenv("ADMIN_EMAILS", "").split(",")
         if address.strip()
     )
-    subject = "College Lost & Found report received"
+    subject = "Symbiote Lofo AI report received"
     sender = os.getenv("SMTP_FROM_EMAIL", os.getenv("SMTP_USERNAME", ""))
     errors = []
     try:
@@ -1058,7 +1058,7 @@ def main():
         render_login_page()
         return
 
-    st.sidebar.title("College Lost & Found")
+    st.sidebar.title("Symbiote Lofo AI")
     st.sidebar.write(f"👤 {user['name']}")
     st.sidebar.caption(user["email"])
     pages = [
