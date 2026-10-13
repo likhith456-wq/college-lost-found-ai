@@ -11,7 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.2.0,<3" \
     && pip install --no-cache-dir -r requirements.txt
 
-COPY app.py .
+COPY *.py ./
 RUN mkdir -p /var/data/item_photos /var/data/huggingface
 
 EXPOSE 8501

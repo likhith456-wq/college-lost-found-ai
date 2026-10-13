@@ -3,3 +3,4 @@ pillow>=10.0.0
 transformers>=4.41.0,<5
 torch>=2.2.0,<3
 pandas>=2.0.0
+qrcode[pil]>=7.4,<9

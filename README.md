@@ -38,7 +38,7 @@ Open the local URL printed by Streamlit. The first image identification download
 
    Set secrets through Render's environment settings, not in source control. The `PORT` variable is supplied by Render and is used by the Docker command.
 
-5. Deploy. On the first startup the administrator account is created from the bootstrap variables. If the account already exists, it is promoted to admin without changing its password. Register student accounts using the sign-up page.
+5. Deploy. On the first startup the administrator account is created from the bootstrap variables. If the account already exists, its current password must match `BOOTSTRAP_ADMIN_PASSWORD` before it can be promoted. Register student accounts using the sign-up page. Set `APP_BASE_URL` to the deployed HTTPS URL to enable QR creation.
 6. Open the public URL shown on the Render service page and test sign-in, a report submission, the **My Reports** page, and the **Mark my report as done** action. Users can complete their own reports; admins can complete any report. Completion is visible and can be filtered in Saved Reports.
 
 For persistent SQLite storage, run only one service instance. This app is not configured for multiple replicas or concurrent shared-disk database access. Keep the admin password and SMTP credentials private, and rotate them in the provider if they are exposed.
@@ -50,3 +50,69 @@ Email sending is disabled until `SMTP_HOST` is configured. Use SMTP credentials 
 ## Data and accounts
 
 Set `APP_DATA_DIR` to a writable persistent directory to keep the SQLite database and photos across deployments. New passwords are stored using PBKDF2; existing SHA-256 password hashes are upgraded when those users next sign in.
+
+## Features and privacy
+
+- Signup always creates a student account. Configure the first administrator with `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`; if that email already belongs to an account, the configured password must verify before the account is promoted.
+- Profiles can store roll number, department, year of study, and optional phone number. Roll numbers remain strings (including leading zeroes), are never returned by student-facing database queries, and are only searchable by a recently reauthenticated administrator. No roll-number format or uniqueness rule is assumed unless configured below.
+- Private registered-item records are visible only to the owner or a recently reauthenticated admin. QR links contain only a random opaque token; the database stores a SHA-256 token hash. Public scans disclose no owner data. A QR is not proof of ownership.
+- Claims and their ownership evidence are private to the claimant and admins. Only a reauthenticated admin can approve/reject claims or complete a handover. SQLite uniqueness constraints and an immediate transaction prevent a second handover for the same Found report.
+- Lost/Found direction is separate from workflow (`Open`, `Under Review`, `Claim Pending`, `Approved for Handover`, `Returned`, `Closed`). Existing completion records migrate to `Closed`; other old reports migrate to `Open`, not `Returned`.
+- Duplicate warnings compare only the current reporter's recent submissions and never block or delete records. Similarity matches rank Lost/Found pairs using explainable text, optional CLIP photo embeddings, category, location, and date scores. The scores are heuristics, not ownership decisions.
+- New image uploads are decoded and re-encoded to JPEG with random filenames, format checks, a byte limit, and a pixel limit. Reports and photo files contain student-provided information; deploy only for a campus that is authorized to process it.
+
+## Environment variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `APP_DATA_DIR` | App folder locally; `/var/data` in Docker | Writable directory for database, backups, photos, and data |
+| `BOOTSTRAP_ADMIN_EMAIL` | unset | Email for first admin provisioning |
+| `BOOTSTRAP_ADMIN_PASSWORD` | unset | Existing-account verification or initial admin password; store as a secret |
+| `ROLL_NUMBER_REGEX` | unset | Optional Python regular expression for the college's exact roll-number format |
+| `ROLL_NUMBER_UNIQUE` | `false` | Set to `true` only if college rules require uniqueness; migration fails safely on existing duplicates |
+| `APP_BASE_URL` | unset | Trusted HTTPS app URL used in QR links (HTTP localhost allowed for development) |
+| `MAX_UPLOAD_BYTES` | `5242880` | Maximum decoded upload size in bytes (5 MiB) |
+| `MAX_IMAGE_PIXELS` | `20000000` | Maximum decoded image pixels |
+| `SESSION_IDLE_SECONDS` | `1800` | Streamlit inactivity timeout (minimum five minutes) |
+| `IMAGE_MODEL` | `openai/clip-vit-base-patch32` | Hugging Face image-classification model |
+| `DUPLICATE_WINDOW_HOURS` | `72` | Reporter-scoped duplicate warning window |
+| `MATCH_WEIGHT_TEXT` | `0` | Optional non-negative matching weight; zero weights are ignored |
+| `MATCH_WEIGHT_IMAGE` | `0` | Optional non-negative matching weight |
+| `MATCH_WEIGHT_CATEGORY` | `0` | Optional non-negative matching weight |
+| `MATCH_WEIGHT_LOCATION` | `0` | Optional non-negative matching weight |
+| `MATCH_WEIGHT_DATE` | `0` | Optional non-negative matching weight |
+| `SMTP_HOST` | unset | SMTP server; email notifications remain disabled if unset |
+| `SMTP_PORT` | `587` | SMTP server port |
+| `SMTP_USERNAME` | unset | Optional SMTP authentication username |
+| `SMTP_PASSWORD` | unset | Optional SMTP authentication password/app password |
+| `SMTP_FROM_EMAIL` | `SMTP_USERNAME` | Sender address |
+| `SMTP_USE_TLS` | `true` | Start TLS before SMTP authentication |
+| `ADMIN_EMAILS` | unset | Comma-separated admin notification addresses; messages are sent separately |
+| `HF_HOME` | Hugging Face default; `/var/data/huggingface` in Docker | Persistent cache location for downloaded model files |
+| `PORT` | `8501` | Hosting platform port; Docker uses the host-provided value |
+
+Roll-number settings must reflect actual college policy. Enabling uniqueness builds a partial unique index; if duplicates are present the app stops migration and tells the operator to resolve them first. Roll numbers are not included in QR payloads, emails, student report queries, or audit entries.
+
+## Migrations, backups, and tests
+
+On startup, the app applies repeatable, versioned SQLite migrations in a transaction and enables foreign keys for each connection. Before upgrading an existing database, it uses SQLite's online backup API and copies the item-photo directory into `APP_DATA_DIR/backups`. The first migration preserves existing user, report, email-log, and photo data. Keep off-host backups as well; a same-disk backup is not sufficient for disaster recovery.
+
+Run the isolated test suite from this folder on Windows:
+
+```powershell
+py -3.12 -m pip install -r requirements.txt
+py -3.12 -m unittest discover -s tests -v
+```
+
+Tests use temporary SQLite databases and do not reset or write to the app database.
+
+## Deployment limitations and operational security
+
+- Run one application instance when using SQLite. SQLite on a local persistent disk is not a multi-replica shared database. Back up the database and photos off-host and test restoration before production.
+- Persistent local disk is required on Render to retain database, QR-linked data, photo files, and model cache. A container restart without a persistent disk loses these files. Streamlit Community Cloud's ephemeral filesystem is not suitable for durable production data without migrating storage.
+- Streamlit account sessions are not a substitute for institutional SSO, email verification, MFA, or a formal identity lifecycle. Restrict who can reach the deployment, use strong unique passwords, TLS, managed secrets, rate limiting, and a reviewed admin onboarding/offboarding process.
+- Admin sensitive actions require password reauthentication within five minutes. An app-level idle timeout clears the app session, but does not provide a hardened server-side session store or revoke copied browser cookies.
+- QR tokens are bearer links: possession does not reveal the owner, but anyone holding a valid token can submit a found-item note. Rotate/revoke a code if it is shared or exposed.
+- Email delivery is best-effort SMTP and failures are shown/logged; it is not a durable queue. Do not put roll numbers, serial numbers, evidence, or other sensitive details in SMTP credentials or email content.
+- Similarity weights are configurable heuristics and have not been evaluated against labelled campus data. Human admin verification is always required before handover.
+- Have the college review privacy notices, retention/deletion policy, access controls, threat model, SMTP provider, and data-protection obligations before handling real student data. This implementation is not a claim of production security certification.
